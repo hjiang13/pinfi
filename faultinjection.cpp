@@ -19,6 +19,7 @@ int activated = 0;
 
 
 CJmpMap jmp_map;
+FILE* trace;
 
 
 VOID FI_InjectFault_FlagReg(VOID * ip, UINT32 reg_num, UINT32 jmp_num, CONTEXT* ctxt)
@@ -530,12 +531,66 @@ VOID get_instance_number(const char* fi_instcount_file)
 	fclose(fi_input_FILE);	
 }
 
+
+VOID RecordMemRead(VOID* ip, VOID* addr, ADDRINT inst, INS ins, VOID* v )
+{
+	ADDRINT value;
+	PIN_SafeCopy(&value, addr, sizeof(ADDRINT));
+	fprintf(trace, "%p: R %p : VAL %lx\n", ip, addr, value);
+	if (!fiecc.Value())
+	{
+		instruction_Instrumentation(ins, v);
+	}
+	else 
+		instruction_InstrumentationECC(ins , v);
+}
+
+VOID RecordMemWrite(VOID* ip, VOID* addr, ADDRINT inst, INS ins, VOID* v )
+{
+	ADDRINT value;
+	PIN_SafeCopy(&value, addr, sizeof(ADDRINT));
+	fprintf(trace, "%p: W %p : VAL %lx\n", ip, addr, value);
+	if (!fiecc.Value())
+	{
+		instruction_Instrumentation(ins, v);
+	}
+	else 
+		instruction_InstrumentationECC(ins , v);
+}
+
+VOID TraceFI(INS ins, VOID* v)
+{
+	UINT64 memOperands = INS_MemoryOperandCount(ins);
+	for (UINT64 memOp = 0; memOp < mem0perands; mem0p++)
+	{
+		if (INS_MemoryOperandIsRead (ins, memOp))
+		{
+			INS_InsertPredicatedCall (
+				ins, IPOINT_BEFORE, (AFUNPTR)RecordMemRead,
+				IARG_INST_PTR,
+				IARG_MEMORYREAD_EA, memOp,
+				IARG_END);
+		}
+		
+		if (INS_MemoryOperandIsWritten(ins, memOp) )
+		{
+			INS_InsertPredicatedCall(
+			ins, IPOINT_BEFORE, (AFUNPTR)RecordMemWrite,
+			IARG_INST_PTR,
+			IARG_MEMORYREAD_EA, memOp,
+			IARG_END);
+		}
+	}
+}
+
 VOID Fini(INT32 code, VOID *v)
 {
 	if(!activated){
 		fprintf(activationFile, "Not Activated!\n");
 		fclose(activationFile);
 	}
+	fprintf(trace, "#eof \n");
+	fclose(trace);
 }
 
 /* ===================================================================== */
@@ -552,21 +607,13 @@ INT32 Usage()
 int main(int argc, char *argv[])
 {
 	PIN_InitSymbols();
-
+	
     if (PIN_Init(argc, argv)) return Usage();
-  
-
-
-  configInstSelector();
-
+	configInstSelector();
 
 	get_instance_number(instcount_file.Value().c_str());
 
-	if (!fiecc.Value())
-	INS_AddInstrumentFunction(instruction_Instrumentation, 0);
-
-	else
-		INS_AddInstrumentFunction(instruction_InstrumentationECC, 0);
+	INS_AddInstrumentFunction(TraceFI);
 
 	PIN_AddFiniFunction(Fini, 0);
 
