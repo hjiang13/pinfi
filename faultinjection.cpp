@@ -281,7 +281,7 @@ VOID FI_InjectFault_MEM_ECC(VOID * ip, VOID *memp, UINT32 size,UINT32 num, BOOL 
 }
 
 
-VOID instruction_InstrumentationECC(INS ins, VOID *v)
+VOID instruction_InstrumentationECC(INS ins, VOID *v, VOID *ip, VOID* memp, UINT32 size, UINT32 num, BOOL mode)
 {
 	int num = multibits.Value();
 	bool mode = consecutive.Value();
@@ -307,7 +307,7 @@ VOID instruction_InstrumentationECC(INS ins, VOID *v)
 }
 
 
-VOID instruction_Instrumentation(INS ins, VOID *v, VOID *ip, UINT32 reg_num, CONTEXT *ctxt){
+VOID instruction_Instrumentation(INS ins, VOID *v, VOID *ip, UINT32 reg_num, CONTEXT *ctxt, VOID* memOp, UINT32 size){
 	// decides where to insert the injection calls and what calls to inject
   if (!isValidInst(ins))
     return;
@@ -417,22 +417,12 @@ VOID instruction_Instrumentation(INS ins, VOID *v, VOID *ip, UINT32 reg_num, CON
       //LOG("inject flag bit:" + REG_StringShort(reg) + "\n");
 			
       UINT32 jmpindex = jmp_map.findJmpIndex(OPCODE_StringShort(INS_Opcode(next_ins)));
-			INS_InsertPredicatedCall(ins, IPOINT_AFTER, (AFUNPTR)FI_InjectFault_FlagReg,
-						IARG_INST_PTR,
-						IARG_UINT32, index,
-						IARG_UINT32, jmpindex,
-						IARG_CONTEXT,
-						IARG_END);
+			FI_InjectFault_FlagReg(ip, reg_num, jmp_num, ctxt);
 			return;
 		} else if (INS_IsMemoryWrite(ins)) {
         LOG("COMP2MEM: inst " + INS_Disassemble(ins) + "\n");
 				
-        INS_InsertPredicatedCall(
-								ins, IPOINT_BEFORE, (AFUNPTR)FI_InjectFault_Mem,
-								IARG_ADDRINT, INS_Address(ins),
-								IARG_MEMORYREAD_EA,							
-								IARG_MEMORYREAD_SIZE,
-								IARG_END);
+			FI_InjectFault_Mem(ip, memOp, size);
         return;
     
     } else {
@@ -440,15 +430,7 @@ VOID instruction_Instrumentation(INS ins, VOID *v, VOID *ip, UINT32 reg_num, CON
     }
 
 	}
-
-
-
-	    INS_InsertPredicatedCall(
-					ins, IPOINT_AFTER, (AFUNPTR)inject_CCS,
-					IARG_ADDRINT, INS_Address(ins),
-					IARG_UINT32, index,	
-					IARG_CONTEXT,
-					IARG_END);		
+		inject_CCS(ip , memOp, ctxt );	
 #endif        
 
 }
