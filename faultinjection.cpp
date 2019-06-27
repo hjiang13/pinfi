@@ -300,20 +300,14 @@ VOID instruction_InstrumentationECC(INS ins, VOID *v)
 	}*/
 
 	if (INS_IsMemoryRead(ins)){
-		INS_InsertPredicatedCall(
-				ins, IPOINT_BEFORE, (AFUNPTR)FI_InjectFault_MEM_ECC,
-				IARG_ADDRINT, INS_Address(ins),
-				IARG_MEMORYREAD_EA,
-				IARG_MEMORYREAD_SIZE,
-				IARG_UINT32,num,
-				IARG_BOOL,mode,
-				IARG_END);
+		
+		FI_InjectFault_MEM_ECC ( ip, memp, size, num, mode);
 	}
 
 }
 
 
-VOID instruction_Instrumentation(INS ins, VOID *v){
+VOID instruction_Instrumentation(INS ins, VOID *v, VOID *ip, UINT32 reg_num, CONTEXT *ctxt){
 	// decides where to insert the injection calls and what calls to inject
   if (!isValidInst(ins))
     return;
@@ -345,24 +339,8 @@ VOID instruction_Instrumentation(INS ins, VOID *v){
         LOG("ins:" + INS_Disassemble(ins) + "\n"); 
 		LOG("reg:" + REG_StringShort(reg) + "\n");
 		
-    // FIXME: INCLUDEINST is not used now. However, if you enable this option
-    // in the future, you need to change the code below. If it changes the 
-    // control flow, you need to inject fault in the read register rather than
-    // write register
-        if(mayChangeControlFlow)
-			INS_InsertPredicatedCall(
-					ins, IPOINT_BEFORE, (AFUNPTR)inject_CCS,
-					IARG_ADDRINT, INS_Address(ins),
-					IARG_UINT32, index,	
-					IARG_CONTEXT,
-					IARG_END);		
-		else
-			INS_InsertPredicatedCall(
-					ins, IPOINT_AFTER, (AFUNPTR)inject_CCS,
-					IARG_ADDRINT, INS_Address(ins),
-					IARG_UINT32, index,	
-					IARG_CONTEXT,
-					IARG_END);
+		inject_CCS( ip, reg_num, ctxt);
+					
 #else
 
 
@@ -561,7 +539,7 @@ VOID RecordMemWrite(VOID* ip, VOID* addr, ADDRINT inst, INS ins, VOID* v )
 VOID TraceFI(INS ins, VOID* v)
 {
 	UINT64 memOperands = INS_MemoryOperandCount(ins);
-	for (UINT64 memOp = 0; memOp < mem0perands; mem0p++)
+	for (UINT64 memOp = 0; memOp < memOperands; memOp++)
 	{
 		if (INS_MemoryOperandIsRead (ins, memOp))
 		{
@@ -613,7 +591,7 @@ int main(int argc, char *argv[])
 
 	get_instance_number(instcount_file.Value().c_str());
 
-	INS_AddInstrumentFunction(TraceFI);
+	INS_AddInstrumentFunction(TraceFI, 0);
 
 	PIN_AddFiniFunction(Fini, 0);
 
