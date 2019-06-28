@@ -99,40 +99,6 @@ VOID FI_InjectFault_FlagReg(VOID * ip, UINT32 reg_num, UINT32 jmp_num, CONTEXT* 
 
 
 
-//analysis code -- injection code
-/*
-VOID inject_SP_FP(VOID *ip, UINT32 reg_num, CONTEXT *ctxt){
-	if(fi_iterator == fi_inject_instance) {
-		const REG reg =  reg_map.findInjectReg(reg_num);
-		if(!REG_valid(reg)){
-			fprintf(stderr, "ERROR, Has to be one of SP or BP\n");
-			exit(1);
-		}	
-		PRINT_MESSAGE(4, ("EXECUTING: Reg name %s value %p\n", REG_StringShort(reg).c_str(), 
-			(VOID*)PIN_GetContextReg( ctxt, reg )));
-
-		ADDRINT temp = PIN_GetContextReg( ctxt, reg );
-		srand((unsigned)time(0)); 
-		UINT32 low_bound_bit = reg_map.findLowBoundBit(reg_num);
-		UINT32 high_bound_bit = reg_map.findHighBoundBit(reg_num);
-
-		UINT32 inject_bit = (rand() % (high_bound_bit - low_bound_bit)) + low_bound_bit;
-
-		temp = (ADDRINT) (temp ^ (1UL << inject_bit));
-
-		PIN_SetContextReg( ctxt, reg, temp);
-		PRINT_MESSAGE(4, ("EXECUTING: Changed Reg name %s value %p\n", REG_StringShort(reg).c_str(), 
-			(VOID*)PIN_GetContextReg( ctxt, reg )));
-
-		FI_PrintActivationInfo();	
-		fi_iterator ++;
-		PIN_ExecuteAt(ctxt);
-	}
-	//PIN_ExecuteAt() will lead to reexecution of the function right after injection
-	fi_iterator ++;
-}
-*/
-
 
 VOID inject_CCS(VOID *ip, UINT32 reg_num, CONTEXT *ctxt){
 	//need to consider FP regs and context
@@ -287,17 +253,6 @@ VOID instruction_InstrumentationECC(INS ins, VOID *v, VOID *ip, VOID* memp, UINT
 	bool mode = consecutive.Value();
 	if (!isValidInst(ins))
 		return;
-	// memory write, so the injection happens after
-	/*if (INS_IsMemoryWrite(ins)){
-		INS_InsertPredicatedCall(
-				ins, IPOINT_AFTER, (AFUNPTR)FI_InjectFault_MEM_ECC,
-				IARG_ADDRINT, INS_Address(ins),
-				IARG_MEMORYREAD_EA,
-				IARG_MEMORYREAD_SIZE,
-				IARG_UINT32,num,
-				IARG_UINT32,mode,
-				IARG_END);
-	}*/
 
 	if (INS_IsMemoryRead(ins)){
 		
@@ -307,7 +262,7 @@ VOID instruction_InstrumentationECC(INS ins, VOID *v, VOID *ip, VOID* memp, UINT
 }
 
 
-VOID instruction_Instrumentation(INS ins, VOID *v, VOID *ip, UINT32 reg_num, CONTEXT *ctxt, VOID* memOp, UINT32 size){
+VOID instruction_Instrumentation(INS ins, VOID *v, VOID *ip, UINT32 jmp_num，UINT32 reg_num, CONTEXT *ctxt, VOID* memp, UINT32 size){
 	// decides where to insert the injection calls and what calls to inject
   if (!isValidInst(ins))
     return;
@@ -339,7 +294,8 @@ VOID instruction_Instrumentation(INS ins, VOID *v, VOID *ip, UINT32 reg_num, CON
         LOG("ins:" + INS_Disassemble(ins) + "\n"); 
 		LOG("reg:" + REG_StringShort(reg) + "\n");
 		
-		inject_CCS( ip, reg_num, ctxt);
+		if (mayChangeControlFlow)
+			inject_CCS( ip, reg_num, ctxt);
 					
 #else
 
@@ -419,18 +375,19 @@ VOID instruction_Instrumentation(INS ins, VOID *v, VOID *ip, UINT32 reg_num, CON
       UINT32 jmpindex = jmp_map.findJmpIndex(OPCODE_StringShort(INS_Opcode(next_ins)));
 			FI_InjectFault_FlagReg(ip, reg_num, jmp_num, ctxt);
 			return;
-		} else if (INS_IsMemoryWrite(ins)) {
-        LOG("COMP2MEM: inst " + INS_Disassemble(ins) + "\n");
-				
-			FI_InjectFault_Mem(ip, memOp, size);
-        return;
-    
-    } else {
+		} 
+		else if (INS_IsMemoryWrite(ins))
+			{
+				LOG("COMP2MEM: inst " + INS_Disassemble(ins) + "\n");
+				FI_InjectFault_Mem(ip, memp, size);
+				return;} 
+	else 
+	{
       LOG("NORMAL FLAG REG: inst " + INS_Disassemble(ins) + "\n");
     }
 
 	}
-		inject_CCS(ip , memOp, ctxt );	
+		inject_CCS(ip , memp, ctxt );	
 #endif        
 
 }
@@ -492,33 +449,33 @@ VOID get_instance_number(const char* fi_instcount_file)
 }
 
 
-VOID RecordMemRead(VOID* ip, VOID* addr, ADDRINT inst, INS ins, VOID* v )
+VOID RecordMemRead(VOID* ip, VOID* addr, ADDRINT inst, INS ins, VOID* v, VOID* memp, UINT32 size, UINT32 num, BOOL mode, CONTEXT *ctxt )
 {
 	ADDRINT value;
 	PIN_SafeCopy(&value, addr, sizeof(ADDRINT));
 	fprintf(trace, "%p: R %p : VAL %lx\n", ip, addr, value);
 	if (!fiecc.Value())
 	{
-		instruction_Instrumentation(ins, v);
+		instruction_Instrumentation(ins, v, ip, jmp_num, reg_num, ctxt, memp, size);
 	}
 	else 
-		instruction_InstrumentationECC(ins , v);
+		instruction_InstrumentationECC(ins , v, ip, memp, size, num, mode);
 }
 
-VOID RecordMemWrite(VOID* ip, VOID* addr, ADDRINT inst, INS ins, VOID* v )
+VOID RecordMemWrite(VOID* ip, VOID* addr, ADDRINT inst, INS ins, VOID* v, VOID* memp, UINT32 size, UINT32 num, BOOL mode, CONTEXT *ctxt  )
 {
 	ADDRINT value;
 	PIN_SafeCopy(&value, addr, sizeof(ADDRINT));
 	fprintf(trace, "%p: W %p : VAL %lx\n", ip, addr, value);
 	if (!fiecc.Value())
 	{
-		instruction_Instrumentation(ins, v);
+		instruction_Instrumentation(ins, v, ip, jmp_num, reg_num, ctxt, memp, size);
 	}
 	else 
-		instruction_InstrumentationECC(ins , v);
+		instruction_InstrumentationECC(ins , v, ip, memp, size, num, mode);
 }
 
-VOID TraceFI(INS ins, VOID* v)
+VOID TraceFI(INS ins, VOID* v )
 {
 	UINT64 memOperands = INS_MemoryOperandCount(ins);
 	for (UINT64 memOp = 0; memOp < memOperands; memOp++)
@@ -527,18 +484,26 @@ VOID TraceFI(INS ins, VOID* v)
 		{
 			INS_InsertPredicatedCall (
 				ins, IPOINT_BEFORE, (AFUNPTR)RecordMemRead,
-				IARG_INST_PTR,
-				IARG_MEMORYREAD_EA, memOp,
+				IARG_ADDRINT, INS_Address(ins),
+				IARG_MEMORYREAD_EA, 
+				IARG_MEMORYREAD_SIZE,
+				IAR_UINT32, num,
+				IAR_UINT32, mode,
+				IARG_CONTEXT,
 				IARG_END);
 		}
 		
 		if (INS_MemoryOperandIsWritten(ins, memOp) )
 		{
 			INS_InsertPredicatedCall(
-			ins, IPOINT_BEFORE, (AFUNPTR)RecordMemWrite,
-			IARG_INST_PTR,
-			IARG_MEMORYREAD_EA, memOp,
-			IARG_END);
+			ins, IPOINT_BEFORE, (AFUNPTR)RecordMemRead,
+				IARG_ADDRINT, INS_Address(ins),
+				IARG_MEMORYWRITE_EA, 
+				IARG_MEMORYWRITE_SIZE,
+				IAR_UINT32, num,
+				IAR_UINT32, mode,
+				IARG_CONTEXT,
+				IARG_END);
 		}
 	}
 }
