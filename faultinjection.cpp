@@ -205,7 +205,7 @@ VOID FI_InjectFault_Mem(VOID * ip, VOID *memp, UINT32 size)
 		fi_iterator ++;
 }
 
-VOID FI_InjectFault_MEM_ECC(VOID * ip, VOID *memp, UINT32 size,UINT32 num, BOOL mode)
+VOID FI_InjectFault_MEM_ECC(VOID * ip, VOID *memp, UINT32 size, UINT32 num, BOOL mode)
 {
 	if(fi_iterator == fi_inject_instance) {
 
@@ -262,7 +262,7 @@ VOID instruction_InstrumentationECC(INS ins, VOID *v, VOID *ip, VOID* memp, UINT
 }
 
 
-VOID instruction_Instrumentation(INS ins, VOID *v, VOID *ip, UINT32 jmp_num，UINT32 reg_num, CONTEXT *ctxt, VOID* memp, UINT32 size){
+VOID instruction_Instrumentation(INS ins, VOID *v, VOID *ip, UINT32 jmp_num, UINT32 reg_num, CONTEXT *ctxt, VOID* memp, UINT32 size){
 	// decides where to insert the injection calls and what calls to inject
   if (!isValidInst(ins))
     return;
