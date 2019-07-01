@@ -323,7 +323,7 @@ VOID instruction_InstrumentationECC(INS ins, VOID *v)
 				IARG_END);
 	}
 
-    UNIT64 memOperands = INS_MemoryOperandCount (ins)；
+    	UINT64 memOperands = INS_MemoryOperandCount (ins)；
 	
 	for (UINT64 memOp = 0; memOp < memOperands; memOp++)
 	{
@@ -506,8 +506,9 @@ VOID instruction_Instrumentation(INS ins, VOID *v){
 					IARG_UINT32, index,	
 					IARG_CONTEXT,
 					IARG_END);		
-#endif    
-UNIT64 memOperands = INS_MemoryOperandCount (ins)；
+#endif  
+	
+UINT64 memOperands = INS_MemoryOperandCount (ins)；
 	
 	for (UINT64 memOp = 0; memOp < memOperands; memOp++)
 	{
